@@ -16,6 +16,7 @@ namespace Sample.Api
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                 .Enrich.FromLogContext()
                 .WriteTo.Console()
+                .WriteTo.Seq("http://localhost:5341")
                 .CreateLogger();
 
             try

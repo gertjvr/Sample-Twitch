@@ -5,7 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MassTransit.Azure.Storage" Version="7.0.0" />
+    <PackageReference Include="MassTransit.EntityFrameworkCore" Version="7.0.0" />
     <PackageReference Include="MassTransit.Platform.Abstractions" Version="7.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="3.1.5" />
   </ItemGroup>
 
   <ItemGroup>

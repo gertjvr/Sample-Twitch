@@ -1,10 +1,12 @@
 ﻿namespace Warehouse.Startup
 {
+    using System.Reflection;
     using Components.Consumers;
     using Components.StateMachines;
     using MassTransit;
     using MassTransit.ExtensionsDependencyInjectionIntegration;
     using MassTransit.Platform.Abstractions;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.DependencyInjection;
 
 
@@ -15,10 +17,16 @@
         {
             configurator.AddConsumersFromNamespaceContaining<AllocateInventoryConsumer>();
             configurator.AddSagaStateMachine<AllocationStateMachine, AllocationState>(typeof(AllocateStateMachineDefinition))
-                .MongoDbRepository(r =>
+                .EntityFrameworkRepository(r =>
                 {
-                    r.Connection = "mongodb://mongo";
-                    r.DatabaseName = "allocations";
+                    r.AddDbContext<DbContext, AllocationStateDbContext>((provider,builder) =>
+                    {
+                        builder.UseSqlServer("Server=tcp:gertjvr.database.windows.net,1433;Initial Catalog=gertjvr;Persist Security Info=False;User ID=gertjvr;Password=Works4me!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;", m =>
+                        {
+                            m.MigrationsAssembly(Assembly.GetExecutingAssembly().GetName().Name);
+                            m.MigrationsHistoryTable($"__{nameof(AllocationStateDbContext)}");
+                        });
+                    });
                 });
         }
 

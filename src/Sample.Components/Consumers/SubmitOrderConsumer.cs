@@ -23,7 +23,7 @@ namespace Sample.Components.Consumers
 
         public async Task Consume(ConsumeContext<SubmitOrder> context)
         {
-            _logger?.Log(LogLevel.Debug, "SubmitOrderConsumer: {CustomerNumber}", context.Message.CustomerNumber);
+            _logger?.LogDebug("SubmitOrderConsumer: {CustomerNumber}", context.Message.CustomerNumber);
 
             if (context.Message.CustomerNumber.Contains("TEST"))
             {

@@ -1,18 +1,18 @@
 ﻿namespace Warehouse.Service
 {
-    using System;
     using System.Diagnostics;
     using System.Linq;
+    using System.Reflection;
     using System.Threading.Tasks;
     using Components.Consumers;
     using Components.StateMachines;
     using MassTransit;
+    using MassTransit.Azure.ServiceBus.Core;
     using MassTransit.Definition;
-    using MassTransit.MongoDbIntegration;
-    using MassTransit.RabbitMqTransport;
     using Microsoft.ApplicationInsights;
     using Microsoft.ApplicationInsights.DependencyCollector;
     using Microsoft.ApplicationInsights.Extensibility;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -36,6 +36,7 @@
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                 .Enrich.FromLogContext()
                 .WriteTo.Console()
+                .WriteTo.Seq("http://localhost:5341")
                 .CreateLogger();
 
             var builder = new HostBuilder()
@@ -53,25 +54,31 @@
                     _module.IncludeDiagnosticSourceActivities.Add("MassTransit");
 
                     TelemetryConfiguration configuration = TelemetryConfiguration.CreateDefault();
-                    configuration.InstrumentationKey = "6b4c6c82-3250-4170-97d3-245ee1449278";
+                    configuration.InstrumentationKey = "0bd7dab0-5809-4ce5-b477-c89271124a54";
                     configuration.TelemetryInitializers.Add(new HttpDependenciesParsingTelemetryInitializer());
 
                     _telemetryClient = new TelemetryClient(configuration);
 
                     _module.Initialize(configuration);
-
+                    
                     services.TryAddSingleton(KebabCaseEndpointNameFormatter.Instance);
                     services.AddMassTransit(cfg =>
                     {
                         cfg.AddConsumersFromNamespaceContaining<AllocateInventoryConsumer>();
                         cfg.AddSagaStateMachine<AllocationStateMachine, AllocationState>(typeof(AllocateStateMachineDefinition))
-                            .MongoDbRepository(r =>
+                            .EntityFrameworkRepository(r =>
                             {
-                                r.Connection = "mongodb://127.0.0.1";
-                                r.DatabaseName = "allocations";
+                                r.AddDbContext<DbContext, AllocationStateDbContext>((provider,builder) =>
+                                {
+                                    builder.UseSqlServer("Server=tcp:gertjvr.database.windows.net,1433;Initial Catalog=gertjvr;Persist Security Info=False;User ID=gertjvr;Password=Works4me!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;", m =>
+                                    {
+                                        m.MigrationsAssembly(Assembly.GetExecutingAssembly().GetName().Name);
+                                        m.MigrationsHistoryTable($"__{nameof(AllocationStateDbContext)}");
+                                    });
+                                });
                             });
 
-                        cfg.UsingRabbitMq(ConfigureBus);
+                        cfg.UsingAzureServiceBus(ConfigureBus);
                     });
 
                     services.AddHostedService<MassTransitConsoleHostedService>();
@@ -93,9 +100,11 @@
             Log.CloseAndFlush();
         }
 
-        static void ConfigureBus(IBusRegistrationContext busRegistrationContext, IRabbitMqBusFactoryConfigurator configurator)
+        static void ConfigureBus(IBusRegistrationContext busRegistrationContext, IServiceBusBusFactoryConfigurator configurator)
         {
-            configurator.UseMessageScheduler(new Uri("queue:quartz"));
+            configurator.Host("");
+            
+            configurator.UseServiceBusMessageScheduler();
 
             configurator.ConfigureEndpoints(busRegistrationContext);
         }

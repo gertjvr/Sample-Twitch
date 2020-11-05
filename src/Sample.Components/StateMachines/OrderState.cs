@@ -2,18 +2,12 @@ namespace Sample.Components.StateMachines
 {
     using System;
     using Automatonymous;
-    using MassTransit.MongoDbIntegration.Saga;
-    using MongoDB.Bson.Serialization.Attributes;
 
 
     public class OrderState :
-        SagaStateMachineInstance,
-        IVersionedSaga
+        SagaStateMachineInstance
     {
-        [BsonId]
         public Guid CorrelationId { get; set; }
-
-        public int Version { get; set; }
 
         public string CurrentState { get; set; }
 

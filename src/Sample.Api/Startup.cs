@@ -1,20 +1,21 @@
 namespace Sample.Api
 {
     using System;
-    using Components.Consumers;
     using Contracts;
     using MassTransit;
+    using MassTransit.Azure.Storage;
     using MassTransit.Definition;
-    using MassTransit.MongoDbIntegration.MessageData;
     using Microsoft.ApplicationInsights.DependencyCollector;
     using Microsoft.AspNetCore.Builder;
     using Microsoft.AspNetCore.Diagnostics.HealthChecks;
     using Microsoft.AspNetCore.Hosting;
+    using Microsoft.Azure.Storage;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.DependencyInjection.Extensions;
     using Microsoft.Extensions.Diagnostics.HealthChecks;
     using Microsoft.Extensions.Hosting;
+    using Serilog;
 
 
     public class Startup
@@ -41,16 +42,19 @@ namespace Sample.Api
             services.TryAddSingleton(KebabCaseEndpointNameFormatter.Instance);
             services.AddMassTransit(mt =>
             {
-                mt.UsingRabbitMq((context, cfg) =>
+                mt.UsingAzureServiceBus((context, cfg) =>
                 {
+                    cfg.Host("");
+                    
                     MessageDataDefaults.ExtraTimeToLive = TimeSpan.FromDays(1);
                     MessageDataDefaults.Threshold = 2000;
                     MessageDataDefaults.AlwaysWriteToRepository = false;
-
-                    cfg.UseMessageData(new MongoDbMessageDataRepository("mongodb://127.0.0.1", "attachments"));
+                    
+                    var account = CloudStorageAccount.Parse("");
+                    cfg.UseMessageData(account.CreateMessageDataRepository("attachments"));
                 });
 
-                mt.AddRequestClient<SubmitOrder>(new Uri($"queue:{KebabCaseEndpointNameFormatter.Instance.Consumer<SubmitOrderConsumer>()}"));
+                mt.AddRequestClient<SubmitOrder>(new Uri("queue:submit-order"));
 
                 mt.AddRequestClient<CheckOrder>();
             });
@@ -75,6 +79,8 @@ namespace Sample.Api
                 app.UseDeveloperExceptionPage();
 
             //            app.UseHttpsRedirection();
+            
+            app.UseSerilogRequestLogging();
 
             app.UseOpenApi(); // serve OpenAPI/Swagger documents
             app.UseSwaggerUi3(); // serve Swagger UI

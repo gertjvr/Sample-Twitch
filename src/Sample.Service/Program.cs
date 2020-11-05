@@ -3,6 +3,7 @@
     using System;
     using System.Diagnostics;
     using System.Linq;
+    using System.Reflection;
     using System.Threading.Tasks;
     using Components.BatchConsumers;
     using Components.Consumers;
@@ -10,13 +11,16 @@
     using Components.StateMachines;
     using Components.StateMachines.OrderStateMachineActivities;
     using MassTransit;
+    using MassTransit.Azure.ServiceBus.Core;
+    using MassTransit.Azure.Storage;
     using MassTransit.Courier.Contracts;
     using MassTransit.Definition;
-    using MassTransit.MongoDbIntegration.MessageData;
-    using MassTransit.RabbitMqTransport;
+    using MassTransit.EntityFrameworkCoreIntegration;
     using Microsoft.ApplicationInsights;
     using Microsoft.ApplicationInsights.DependencyCollector;
     using Microsoft.ApplicationInsights.Extensibility;
+    using Microsoft.Azure.Storage;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -41,6 +45,7 @@
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                 .Enrich.FromLogContext()
                 .WriteTo.Console()
+                .WriteTo.Seq("http://localhost:5341")
                 .CreateLogger();
 
             var builder = new HostBuilder()
@@ -58,7 +63,7 @@
                     _module.IncludeDiagnosticSourceActivities.Add("MassTransit");
 
                     TelemetryConfiguration configuration = TelemetryConfiguration.CreateDefault();
-                    configuration.InstrumentationKey = "6b4c6c82-3250-4170-97d3-245ee1449278";
+                    configuration.InstrumentationKey = "0bd7dab0-5809-4ce5-b477-c89271124a54";
                     configuration.TelemetryInitializers.Add(new HttpDependenciesParsingTelemetryInitializer());
 
                     _telemetryClient = new TelemetryClient(configuration);
@@ -76,13 +81,19 @@
                         cfg.AddActivitiesFromNamespaceContaining<AllocateInventoryActivity>();
 
                         cfg.AddSagaStateMachine<OrderStateMachine, OrderState>(typeof(OrderStateMachineDefinition))
-                            .MongoDbRepository(r =>
+                            .EntityFrameworkRepository(r =>
                             {
-                                r.Connection = "mongodb://127.0.0.1";
-                                r.DatabaseName = "orders";
+                                r.AddDbContext<DbContext, OrderStateDbContext>((provider,builder) =>
+                                {
+                                    builder.UseSqlServer("Server=tcp:gertjvr.database.windows.net,1433;Initial Catalog=gertjvr;Persist Security Info=False;User ID=gertjvr;Password=Works4me!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;", m =>
+                                    {
+                                        m.MigrationsAssembly(Assembly.GetExecutingAssembly().GetName().Name);
+                                        m.MigrationsHistoryTable($"__{nameof(OrderStateDbContext)}");
+                                    });
+                                });
                             });
 
-                        cfg.UsingRabbitMq(ConfigureBus);
+                        cfg.UsingAzureServiceBus(ConfigureBus);
 
                         cfg.AddRequestClient<AllocateInventory>();
                     });
@@ -106,10 +117,12 @@
             Log.CloseAndFlush();
         }
 
-        static void ConfigureBus(IBusRegistrationContext context, IRabbitMqBusFactoryConfigurator configurator)
+        static void ConfigureBus(IBusRegistrationContext context, IServiceBusBusFactoryConfigurator configurator)
         {
-            configurator.UseMessageData(new MongoDbMessageDataRepository("mongodb://127.0.0.1", "attachments"));
-            configurator.UseMessageScheduler(new Uri("queue:quartz"));
+            var account = CloudStorageAccount.Parse("");
+            configurator.Host("");
+            configurator.UseMessageData(account.CreateMessageDataRepository("attachments"));
+            configurator.UseServiceBusMessageScheduler();
 
             configurator.ReceiveEndpoint(KebabCaseEndpointNameFormatter.Instance.Consumer<RoutingSlipBatchEventConsumer>(), e =>
             {
